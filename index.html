@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<!--
+═══════════════════════════════════════════════════════════════════
+  ORB!TUS DIGITAL TWIN — TEAM N!TRO HQ
+  Single-file website: chat · shared calendar · missions · race HQ
+═══════════════════════════════════════════════════════════════════
+
+HOW TO PUT THIS ON GITHUB (GitHub Pages):
+  1. Create a repo (e.g. "orbitus-hq") on github.com
+  2. Upload this file and rename it to  index.html
+  3. Repo → Settings → Pages → Source: "main" branch → Save
+  4. Your site is live at  https://<username>.github.io/orbitus-hq/
+
+MAKING CHAT / CALENDAR / MISSIONS SYNC FOR THE WHOLE TEAM:
+  This site has a 3-level sync engine (it picks the best available):
+   A) Claude shared storage — automatic if you publish this file as a
+      Claude artifact (no setup).
+   B) Firebase — for GitHub Pages. FREE, 5 minutes:
+      1. console.firebase.google.com → Add project (any name)
+      2. Build → Realtime Database → Create database → Start in TEST mode
+      3. Copy the database URL, it looks like:
+         https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app
+      4. Paste it into SYNC_URL just below (keep the quotes), re-upload.
+      Everyone who opens the GitHub link now shares the same live data.
+   C) If neither is available → data saves on that device only, and the
+      status pill at the top says "THIS DEVICE ONLY" so nobody is confused.
+
+CHANGING USERNAMES / ACCESS CODES:
+  Edit the USERS block below. Codes are visible to anyone who reads the
+  page source — this is a team clubhouse, not a bank. Don't post
+  sensitive info (sponsor amounts, personal details) in the chat.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ORB!TUS Digital Twin — Team N!TRO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0B132B; --navy-deep:#060B1D; --panel:#101A38; --panel2:#15214a; --line:#1D2A52;
+  --pink:#F04F6A; --olo:#00E0C6; --vanilla:#FFFFE1;
+  --text:#EAEEFA; --muted:#8B96B8;
+  --disp:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:var(--navy-deep);color:var(--text);font-family:var(--disp);overflow:hidden;-webkit-font-smoothing:antialiased}
+::selection{background:var(--pink);color:#fff}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,textarea,select{font-family:inherit;font-size:15px}
+:focus-visible{outline:2px solid var(--olo);outline-offset:2px}
+.bang{color:var(--pink)}
+
+/* marquee */
+.marquee{overflow:hidden;white-space:nowrap;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--navy);user-select:none;flex:none}
+.marquee-inner{display:inline-block;padding:7px 0;font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--muted);animation:scroll 38s linear infinite}
+.marquee-inner b{color:var(--pink);font-weight:500}
+@keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.marquee-inner{animation:none}}
+
+/* ===== login ===== */
+#login{position:fixed;inset:0;display:flex;flex-direction:column;z-index:50;background:
+ radial-gradient(1100px 600px at 80% -10%,rgba(240,79,106,.14),transparent 60%),
+ radial-gradient(900px 500px at -10% 110%,rgba(0,224,198,.10),transparent 60%),var(--navy-deep)}
+.login-mid{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto}
+.login-card{width:100%;max-width:420px}
+.login-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.3em;color:var(--olo);margin-bottom:14px}
+.login-card h1{font-size:clamp(46px,8vw,72px);font-weight:700;letter-spacing:-.02em;line-height:.95}
+.login-sub{margin:14px 0 30px;color:var(--muted);font-size:15px;line-height:1.6}
+.field{margin-bottom:14px}
+.field label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.25em;color:var(--muted);margin-bottom:7px;text-transform:uppercase}
+.field input{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:14px 15px;border-radius:10px;font-size:16px;transition:border-color .15s}
+.field input:focus{border-color:var(--pink);outline:none}
+.btn-go{width:100%;margin-top:8px;background:var(--pink);color:#fff;padding:15px;border-radius:10px;font-weight:600;font-size:16px;letter-spacing:.03em;transition:transform .12s,box-shadow .12s}
+.btn-go:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(240,79,106,.35)}
+.btn-go:active{transform:scale(.98)}
+.login-err{margin-top:12px;font-family:var(--mono);font-size:12px;color:var(--pink);min-height:16px}
+.login-foot{text-align:center;padding:14px;font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--muted)}
+
+/* ===== shell ===== */
+#app{display:none;height:100%;height:100dvh;flex-direction:column}
+#app.on{display:flex}
+header.top{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--navy);border-bottom:1px solid var(--line);flex-wrap:wrap;flex:none}
+.wordmark{font-weight:700;font-size:20px}
+.tabs{display:flex;gap:4px;background:var(--navy-deep);border:1px solid var(--line);border-radius:99px;padding:4px}
+.tab{color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.14em;padding:9px 16px;border-radius:99px;transition:all .15s;font-weight:500}
+.tab:hover{color:var(--text)}
+.tab.on{color:#fff;background:var(--pink);box-shadow:0 3px 12px rgba(240,79,106,.4)}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.syncpill{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;letter-spacing:.16em;border:1px solid var(--line);border-radius:99px;padding:6px 12px;color:var(--olo)}
+.syncpill.off{color:var(--pink)}
+.pulse{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+.me-chip{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);padding:5px 12px 5px 5px;border-radius:99px;font-size:13px;font-weight:500}
+.av{border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:none}
+.btn-out{color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:.12em;padding:8px 10px;border:1px solid var(--line);border-radius:8px}
+.btn-out:hover{color:var(--pink);border-color:var(--pink)}
+
+.view{flex:1;display:none;min-height:0}
+.view.on{display:flex}
+
+/* ===== comms ===== */
+aside{width:268px;min-width:268px;background:var(--navy);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto;flex:none}
+.side-h{font-family:var(--mono);font-size:10px;letter-spacing:.3em;color:var(--muted);padding:18px 18px 8px;text-transform:uppercase}
+.chan{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;color:var(--muted);padding:11px 18px;border-left:3px solid transparent;transition:all .12s}
+.chan:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.chan.on{color:var(--vanilla);border-left-color:var(--pink);background:rgba(240,79,106,.08)}
+.chan .n1{font-size:14.5px;font-weight:600}
+.chan .n1 .hash{font-family:var(--mono);color:var(--pink);margin-right:2px}
+.chan .n2{font-size:11.5px;color:var(--muted)}
+.count{margin:14px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,var(--panel),var(--navy-deep));padding:14px;flex:none}
+.count .k{font-family:var(--mono);font-size:9px;letter-spacing:.26em;color:var(--olo)}
+.count .big{display:flex;gap:8px;margin-top:10px}
+.count .seg{text-align:center;flex:1;background:rgba(255,255,255,.03);border-radius:8px;padding:8px 2px}
+.count .seg .v{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--vanilla)}
+.count .seg .l{font-family:var(--mono);font-size:8px;letter-spacing:.18em;color:var(--muted);margin-top:3px}
+.count .where{margin-top:10px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--muted)}
+
+.chat{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--navy-deep)}
+.chat-h{display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid var(--line);flex:none}
+.burger{display:none;border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:16px}
+.chat-h .hash{font-family:var(--mono);color:var(--pink);font-size:18px}
+.chat-h h2{font-size:17px;font-weight:600}
+.chat-h p{font-size:12px;color:var(--muted)}
+#feed{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:2px}
+.day-sep{align-self:center;font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--muted);background:var(--panel);border:1px solid var(--line);padding:4px 12px;border-radius:99px;margin:14px 0 10px}
+.msg{display:flex;gap:12px;max-width:840px;padding:5px 0}
+.msg .av{width:36px;height:36px;font-size:13px;margin-top:2px}
+.msg.cont{padding-top:0}
+.msg.cont .av{visibility:hidden;height:0;margin:0}
+.line1{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.who{font-weight:600;font-size:14px}
+.badge{font-family:var(--mono);font-size:8px;letter-spacing:.16em;padding:2.5px 8px;border-radius:99px;text-transform:uppercase}
+.badge.team{background:rgba(240,79,106,.14);color:var(--pink);border:1px solid rgba(240,79,106,.35)}
+.badge.sponsor{background:rgba(0,224,198,.1);color:var(--olo);border:1px solid rgba(0,224,198,.3)}
+.when{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.txt{margin-top:3px;font-size:15px;line-height:1.55;word-break:break-word;white-space:pre-wrap}
+.msg.mine .txt{color:var(--vanilla)}
+.empty{margin:auto;text-align:center;color:var(--muted);padding:20px}
+.empty .big{font-size:30px;font-weight:700;color:var(--line);letter-spacing:.02em}
+.empty p{font-size:14px;margin-top:10px;line-height:1.6}
+.composer{padding:12px 16px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--navy);flex:none}
+.composer-row{display:flex;gap:10px;align-items:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px 6px 6px 14px}
+.composer-row:focus-within{border-color:var(--pink)}
+#box{flex:1;background:none;border:none;color:var(--text);font-size:16px;resize:none;max-height:130px;line-height:1.5;padding:9px 0}
+#box:focus{outline:none}
+#box::placeholder{color:var(--muted)}
+#send{width:40px;height:40px;border-radius:11px;background:var(--pink);color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex:none;transition:transform .12s}
+#send:active{transform:scale(.9)}
+.hint{margin-top:7px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--muted);text-align:center}
+.roster{width:230px;min-width:230px;border-left:1px solid var(--line);background:var(--navy);overflow-y:auto;padding-bottom:20px;flex:none}
+.person{display:flex;gap:10px;align-items:center;padding:8px 18px}
+.person .av{width:28px;height:28px;font-size:10px}
+.person .nm{font-size:13px;font-weight:500}
+.person .rl{font-family:var(--mono);font-size:8px;letter-spacing:.08em;color:var(--muted);margin-top:2px}
+
+/* ===== calendar ===== */
+.cal-wrap{flex:1;display:flex;min-height:0;width:100%}
+.cal-main{flex:1;min-width:0;padding:18px 22px;overflow-y:auto}
+.cal-top{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.cal-top h2{font-size:22px;font-weight:700;flex:1;text-align:center}
+.navb{width:40px;height:40px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font-size:18px;display:flex;align-items:center;justify-content:center;flex:none}
+.navb:hover{border-color:var(--pink)}
+.navb:active{transform:scale(.92)}
+.legend{display:flex;gap:16px;justify-content:center;margin-bottom:12px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:6px}
+.dt{width:7px;height:7px;border-radius:50%;flex:none}
+.dt.team{background:var(--pink)}.dt.race{background:var(--olo)}.dt.deadline{background:var(--vanilla)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.dow{font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--muted);text-align:center;padding:5px 0}
+.day{min-height:66px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;cursor:pointer;transition:all .12s;display:flex;flex-direction:column;gap:6px}
+.day:hover{border-color:var(--olo)}
+.day:active{transform:scale(.95)}
+.day.blank{background:none;border-color:transparent;cursor:default}
+.day.today{border-color:var(--pink)}
+.day.sel{background:var(--panel2);border-color:var(--pink);box-shadow:0 0 0 1px var(--pink)}
+.day .dn{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.day.today .dn{color:var(--pink);font-weight:700}
+.day .dots{display:flex;gap:4px;flex-wrap:wrap}
+.cal-side{width:340px;min-width:340px;border-left:1px solid var(--line);background:var(--navy);overflow-y:auto;padding:20px;flex:none}
+.cal-side h3{font-size:17px;font-weight:700;margin-bottom:4px}
+.cal-side .sub{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--muted);margin-bottom:16px;text-transform:uppercase}
+.evi{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:9px}
+.evi .bar{width:4px;height:36px;border-radius:4px;flex:none}
+.bar.team{background:var(--pink)}.bar.race{background:var(--olo)}.bar.deadline{background:var(--vanilla)}
+.evi .t{font-size:14.5px;font-weight:600;line-height:1.35}
+.evi .s{font-size:11.5px;color:var(--muted);margin-top:3px}
+.evi .x{margin-left:auto;color:var(--muted);font-size:15px;padding:8px;flex:none}
+.evi .x:hover{color:var(--pink)}
+.noev{color:var(--muted);font-size:13.5px;padding:6px 0 14px;line-height:1.5}
+.addbox{border-top:1px solid var(--line);margin-top:14px;padding-top:16px}
+.addbox .side-h{padding:0 0 10px}
+.addbox input,.addbox select{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:12px 14px;border-radius:10px;margin-bottom:9px}
+.addbox input:focus{border-color:var(--pink);outline:none}
+.two{display:flex;gap:9px}
+.two>*{flex:1}
+.btn-add{width:100%;background:var(--pink);color:#fff;font-weight:600;padding:13px;border-radius:10px;font-size:14.5px}
+.btn-add:active{transform:scale(.98)}
+
+/* ===== missions ===== */
+.board{flex:1;display:flex;flex-direction:column;min-height:0;padding:18px 22px;width:100%}
+.board-top{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.board-top input{flex:1;min-width:200px;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:13px 16px;border-radius:10px}
+.board-top input:focus{border-color:var(--pink);outline:none}
+.board-top select{background:var(--panel);border:1px solid var(--line);color:var(--text);padding:0 14px;border-radius:10px}
+.board-top button{background:var(--pink);color:#fff;font-weight:600;padding:0 22px;border-radius:10px;font-size:14.5px}
+.cols{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;min-height:0;overflow-y:auto}
+.col{background:var(--navy);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:200px}
+.col-h{display:flex;align-items:center;gap:9px;padding:13px 15px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:10px;letter-spacing:.22em;flex:none}
+.col-h .n{margin-left:auto;background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:1px 9px;font-size:9px;color:var(--muted)}
+.col-body{flex:1;overflow-y:auto;padding:10px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.dot.todo{background:var(--pink)}.dot.doing{background:var(--vanilla)}.dot.done{background:var(--olo)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 14px;margin-bottom:9px}
+.card .tt{font-size:14.5px;font-weight:500;line-height:1.4}
+.card.fin .tt{color:var(--muted);text-decoration:line-through}
+.card .meta{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.card .as{font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--olo)}
+.card .mv{margin-left:auto;display:flex;gap:6px}
+.pill{background:var(--navy-deep);border:1px solid var(--line);color:var(--text);border-radius:99px;font-size:12.5px;font-weight:600;padding:7px 14px}
+.pill.go{background:var(--pink);border-color:transparent;color:#fff}
+.pill:active{transform:scale(.93)}
+
+/* ===== race hq ===== */
+.hq{flex:1;overflow-y:auto;padding:20px 22px;width:100%}
+.hq-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1000px;margin:0 auto}
+.panelbox{background:var(--navy);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.panel-h{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
+.panel-h span{font-family:var(--mono);font-size:10px;letter-spacing:.26em;color:var(--olo)}
+.cd-big{display:flex;gap:10px;padding:18px}
+.cd-big .seg{flex:1;text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 4px}
+.cd-big .v{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--vanilla)}
+.cd-big .l{font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--muted);margin-top:5px}
+.cd-where{padding:0 18px 16px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--muted)}
+.twin-name{padding:16px 18px 2px;font-weight:700;font-size:26px}
+.twin-sub{padding:0 18px 12px;font-family:var(--mono);font-size:9px;letter-spacing:.2em;color:var(--muted)}
+.twin-grid{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line)}
+.twin-cell{padding:13px 18px;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+.twin-cell:nth-child(3n){border-right:none}
+.twin-cell .k{font-family:var(--mono);font-size:8px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+.twin-cell .v{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--vanilla);margin-top:4px}
+.twin-cell .v em{font-style:normal;font-size:10px;color:var(--olo);font-weight:400}
+.chk{padding:8px 10px}
+.chk-i{display:flex;align-items:center;gap:12px;padding:10px 8px;border-radius:8px;cursor:pointer;transition:background .12s}
+.chk-i:hover{background:rgba(255,255,255,.03)}
+.tick{width:24px;height:24px;border-radius:8px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex:none;transition:all .12s}
+.chk-i.done .tick{background:var(--olo);border-color:var(--olo);color:var(--navy)}
+.chk-i .cl{font-size:14.5px;font-weight:500;line-height:1.4}
+.chk-i.done .cl{color:var(--muted);text-decoration:line-through}
+.chk-prog{padding:14px 18px;border-top:1px solid var(--line)}
+.prog-bar{height:8px;background:var(--panel);border-radius:99px;overflow:hidden}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--pink),var(--olo));border-radius:99px;transition:width .3s ease}
+.prog-lab{font-family:var(--mono);font-size:9px;letter-spacing:.16em;color:var(--muted);margin-top:8px}
+.linkrow{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);color:var(--text);text-decoration:none;font-size:14.5px;font-weight:500;transition:background .12s}
+.linkrow:hover{background:rgba(255,255,255,.03)}
+.linkrow:last-child{border-bottom:none}
+.linkrow .ar{margin-left:auto;color:var(--muted)}
+.linkrow .ic{font-size:17px}
+
+@media (max-width:1060px){.roster{display:none}.cal-side{width:300px;min-width:300px}.hq-grid{grid-template-columns:1fr}}
+@media (max-width:800px){
+  aside{position:fixed;left:0;top:0;bottom:0;z-index:40;transform:translateX(-100%);transition:transform .22s;box-shadow:none}
+  aside.open{transform:none;box-shadow:20px 0 60px rgba(0,0,0,.55)}
+  .burger{display:flex}
+  .cal-wrap{flex-direction:column;overflow-y:auto}
+  .cal-main{overflow:visible;flex:none}
+  .cal-side{width:auto;min-width:0;border-left:none;border-top:1px solid var(--line)}
+  .day{min-height:52px;padding:6px}
+  .cols{grid-template-columns:1fr}
+  .tabs{order:3;width:100%;justify-content:center}
+  .tab{flex:1;text-align:center;padding:9px 6px}
+  .me-chip span:last-child{display:none}
+  .row-max{max-width:100%}
+}
+#overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:35}
+#overlay.on{display:block}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login">
+  <div class="marquee"><div class="marquee-inner" id="mq1"></div></div>
+  <div class="login-mid">
+    <div class="login-card">
+      <div class="login-eyebrow">ORB!TUS DIGITAL TWIN · TEAM HQ</div>
+      <h1>N<span class="bang">!</span>TRO</h1>
+      <p class="login-sub">The pursuit of zero friction — one HQ for the whole team. Chat, shared calendar, missions and race-day tools.</p>
+      <div class="field"><label for="u">Callsign</label><input id="u" autocomplete="username" placeholder="e.g. aryeh" autocapitalize="none"></div>
+      <div class="field"><label for="p">Access code</label><input id="p" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+      <button class="btn-go" id="go">Enter the paddock →</button>
+      <div class="login-err" id="err"></div>
+    </div>
+  </div>
+  <div class="login-foot">© 2026 TEAM N!TRO · ENGINEERING PERFECTION · STEM RACING NATIONALS</div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <header class="top">
+    <div class="wordmark">N<span class="bang">!</span>TRO</div>
+    <nav class="tabs" id="tabs">
+      <button class="tab on" data-v="comms">CHAT</button>
+      <button class="tab" data-v="calendar">CALENDAR</button>
+      <button class="tab" data-v="board">MISSIONS</button>
+      <button class="tab" data-v="hq">RACE HQ</button>
+    </nav>
+    <div class="top-right">
+      <div class="syncpill" id="syncpill"><span class="pulse"></span><span id="syncTxt">CHECKING…</span></div>
+      <div class="me-chip"><span id="meAv"></span><span id="meName"></span></div>
+      <button class="btn-out" id="logout">SIGN OUT</button>
+    </div>
+  </header>
+  <div class="marquee"><div class="marquee-inner" id="mq2"></div></div>
+  <div id="overlay"></div>
+
+  <!-- CHAT -->
+  <div class="view on" id="v-comms">
+    <aside id="side">
+      <div class="count">
+        <div class="k">T-MINUS · NATIONALS</div>
+        <div class="big">
+          <div class="seg"><div class="v" id="cdD">–</div><div class="l">DAYS</div></div>
+          <div class="seg"><div class="v" id="cdH">–</div><div class="l">HRS</div></div>
+          <div class="seg"><div class="v" id="cdM">–</div><div class="l">MIN</div></div>
+          <div class="seg"><div class="v" id="cdS">–</div><div class="l">SEC</div></div>
+        </div>
+        <div class="where">SHARDA UNIVERSITY · 31 JUL – 2 AUG</div>
+      </div>
+      <div class="side-h">Pit Channels</div>
+      <div id="chans"></div>
+      <div class="side-h">Crew</div>
+      <div id="rosterTeam"></div>
+      <div class="side-h">Partners</div>
+      <div id="rosterSponsors"></div>
+    </aside>
+
+    <section class="chat">
+      <div class="chat-h">
+        <button class="burger" id="burger" aria-label="Channels">≡</button>
+        <span class="hash">#</span><h2 id="chanName"></h2><p id="chanDesc"></p>
+      </div>
+      <div id="feed" role="log" aria-live="polite"></div>
+      <div class="composer">
+        <div class="composer-row">
+          <textarea id="box" placeholder="Message the team…" rows="1"></textarea>
+          <button id="send" aria-label="Send">↑</button>
+        </div>
+        <div class="hint">ENTER TO SEND · SHIFT+ENTER = NEW LINE · SYNCS TO EVERYONE IN SECONDS</div>
+      </div>
+    </section>
+
+    <div class="roster">
+      <div class="side-h">The Unity — Crew</div><div id="rosterTeam2"></div>
+      <div class="side-h">Enterprise — Partners</div><div id="rosterSponsors2"></div>
+    </div>
+  </div>
+
+  <!-- CALENDAR -->
+  <div class="view" id="v-calendar">
+    <div class="cal-wrap">
+      <div class="cal-main">
+        <div class="cal-top">
+          <button class="navb" id="calPrev" aria-label="Previous month">‹</button>
+          <h2 id="calTitle"></h2>
+          <button class="navb" id="calNext" aria-label="Next month">›</button>
+        </div>
+        <div class="legend">
+          <span><span class="dt team"></span>TEAM</span>
+          <span><span class="dt race"></span>RACE DAY</span>
+          <span><span class="dt deadline"></span>DEADLINE</span>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+      <div class="cal-side">
+        <h3 id="dayTitle">Pick a day</h3>
+        <div class="sub">TAP ANY DAY ON THE CALENDAR</div>
+        <div id="dayEvents"></div>
+        <div class="addbox">
+          <div class="side-h">Add to team calendar</div>
+          <input id="evTitle" placeholder="What's happening?" maxlength="80">
+          <div class="two">
+            <input id="evTime" type="time">
+            <select id="evTag">
+              <option value="team">Team</option>
+              <option value="race">Race day</option>
+              <option value="deadline">Deadline</option>
+            </select>
+          </div>
+          <button class="btn-add" id="evAdd">Add event — everyone sees it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MISSIONS -->
+  <div class="view" id="v-board">
+    <div class="board">
+      <div class="board-top">
+        <input id="tkTitle" placeholder="New mission… (e.g. Sand and seal car body №3)" maxlength="120">
+        <select id="tkAssign"></select>
+        <button id="tkAdd">Add</button>
+      </div>
+      <div class="cols">
+        <div class="col"><div class="col-h"><span class="dot todo"></span>TO DO<span class="n" id="nTodo">0</span></div><div class="col-body" id="colTodo"></div></div>
+        <div class="col"><div class="col-h"><span class="dot doing"></span>IN PROGRESS<span class="n" id="nDoing">0</span></div><div class="col-body" id="colDoing"></div></div>
+        <div class="col"><div class="col-h"><span class="dot done"></span>DONE<span class="n" id="nDone">0</span></div><div class="col-body" id="colDone"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RACE HQ -->
+  <div class="view" id="v-hq">
+    <div class="hq">
+      <div class="hq-grid">
+        <div class="panelbox">
+          <div class="panel-h"><span>T-MINUS · NATIONALS 2026</span><span class="pulse" style="color:var(--olo)"></span></div>
+          <div class="cd-big">
+            <div class="seg"><div class="v" id="cdD2">–</div><div class="l">DAYS</div></div>
+            <div class="seg"><div class="v" id="cdH2">–</div><div class="l">HRS</div></div>
+            <div class="seg"><div class="v" id="cdM2">–</div><div class="l">MIN</div></div>
+            <div class="seg"><div class="v" id="cdS2">–</div><div class="l">SEC</div></div>
+          </div>
+          <div class="cd-where">SHARDA UNIVERSITY · 31 JUL – 2 AUG 2026 · STEM RACING INDIA NATIONAL FINALS</div>
+        </div>
+
+        <div class="panelbox">
+          <div class="panel-h"><span>LIVE TWIN · RACE SPEC</span></div>
+          <div class="twin-name">ORB<span class="bang">!</span>TUS</div>
+          <div class="twin-sub">SAPPHIRE 2026 · POLYURETHANE / PA12 / CERAMIC</div>
+          <div class="twin-grid">
+            <div class="twin-cell"><div class="k">Drag</div><div class="v">0.168 <em>Cd</em></div></div>
+            <div class="twin-cell"><div class="k">Mass</div><div class="v">51.0 <em>g</em></div></div>
+            <div class="twin-cell"><div class="k">Sim</div><div class="v">1.088 <em>s</em></div></div>
+            <div class="twin-cell"><div class="k">Tolerance</div><div class="v">±0.05 <em>mm</em></div></div>
+            <div class="twin-cell"><div class="k">Peak Press.</div><div class="v">200 <em>Pa</em></div></div>
+            <div class="twin-cell"><div class="k">Safety</div><div class="v">2.5 <em>SF</em></div></div>
+          </div>
+        </div>
+
+        <div class="panelbox">
+          <div class="panel-h"><span>RACE-DAY CHECKLIST · SHARED</span></div>
+          <div class="chk" id="chkList"></div>
+          <div class="chk-prog">
+            <div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+            <div class="prog-lab" id="progLab">0 OF 0 READY</div>
+          </div>
+        </div>
+
+        <div class="panelbox">
+          <div class="panel-h"><span>QUICK LINKS</span></div>
+          <a class="linkrow" href="https://teamnitro.org" target="_blank" rel="noopener"><span class="ic">🏎️</span>teamnitro.org — main site<span class="ar">↗</span></a>
+          <a class="linkrow" href="https://stemracing.in" target="_blank" rel="noopener"><span class="ic">🏁</span>STEM Racing India<span class="ar">↗</span></a>
+          <a class="linkrow" href="mailto:anayagarwal23@gmail.com"><span class="ic">✉️</span>Contact the team<span class="ar">↗</span></a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════ CONFIG ══════════════ */
+/* Firebase Realtime Database URL for GitHub Pages sync.
+   Leave "" to use Claude shared storage (published artifact)
+   or device-only mode. See the guide at the top of this file. */
+const SYNC_URL = "";
+
+/* ══════════════ ACCOUNTS ══════════════ */
+const USERS = {
+  aryeh:{pw:"orbitus01",name:"Aryeh",role:"Team Leader · Design & Mfg",type:"team",color:"#F04F6A",admin:true},
+  anay:{pw:"orbitus02",name:"Anay",role:"Technical Head",type:"team",color:"#F04F6A"},
+  aariv:{pw:"orbitus03",name:"Aariv",role:"Enterprise & Marketing",type:"team",color:"#F04F6A"},
+  rishaan:{pw:"orbitus04",name:"Rishaan",role:"Sponsorship Manager",type:"team",color:"#F04F6A"},
+  vansh:{pw:"orbitus05",name:"Vansh",role:"Project Manager",type:"team",color:"#F04F6A"},
+  aryavardhan:{pw:"orbitus06",name:"Aryavardhan",role:"Team Identity Specialist",type:"team",color:"#F04F6A"},
+  jaypee:{pw:"partner01",name:"Jaypee Brothers",role:"Partner",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  starwire:{pw:"partner02",name:"StarWire",role:"Partner · Materials",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  lsg:{pw:"partner03",name:"Lucknow Super Giants",role:"Partner · Brand",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  bmw:{pw:"partner04",name:"BMW Infinity Motors",role:"Partner · Aero",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  safeexpress:{pw:"partner05",name:"Safe Express",role:"Partner · Logistics",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  saregama:{pw:"partner06",name:"Saregama",role:"Patron",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  bp:{pw:"partner07",name:"British Petroleum",role:"Partner · Energy",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  betadine:{pw:"partner08",name:"Betadine",role:"Partner · Safety",type:"sponsor",color:"#00E0C6",fg:"#0B132B"}
+};
+const CHANNELS=[
+  {id:"pitwall",name:"pit-wall",desc:"Announcements & race ops"},
+  {id:"design",name:"design-cfd",desc:"CAD, CFD & drag numbers"},
+  {id:"manufacturing",name:"manufacturing",desc:"CNC, SLS, paint & assembly"},
+  {id:"enterprise",name:"enterprise",desc:"Marketing & pit display"},
+  {id:"partners",name:"partners-lounge",desc:"Open channel with sponsors"},
+  {id:"nationals",name:"nationals-2026",desc:"Sharda Univ · 31 Jul–2 Aug"}
+];
+const CHECK_SEED=[
+  "Car mass ≥ 50.0 g verified on scales",
+  "Tether line test passed",
+  "All 4 wheels spin freely (10 s+)",
+  "Bearings cleaned & dry",
+  "Spare wheel set + axles packed",
+  "Engineering portfolio printed ×2",
+  "Pit display & banners packed",
+  "Team uniforms & IDs packed",
+  "Verbal presentation rehearsed",
+  "Backup car packed & labelled"
+];
+const TICKER="ZERO FRICTION — AERODYNAMIC PRECISION — ENGINEERING EXCELLENCE — <b>SAPPHIRE 2026</b> — Cd 0.168 — 51g RACE WEIGHT — CNC MILLED — <b>NATIONALS · SHARDA UNIVERSITY</b> — ";
+const NAT_START=new Date("2026-07-31T09:00:00+05:30").getTime();
+const NAT_END=new Date("2026-08-02T18:00:00+05:30").getTime();
+
+/* ══════════════ STATE ══════════════ */
+let me=null,chan=CHANNELS[0],view="comms";
+let lastChat="",lastCal="",lastTasks="",lastChk="";
+let calCursor=new Date(2026,6,1), selDate=new Date().toISOString().slice(0,10);
+let calCache=[];
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const initials=n=>n.split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
+const uid=()=>Date.now()+"-"+Math.random().toString(36).slice(2,7);
+function avatar(u,sz){const s=document.createElement("span");s.className="av";s.style.background=u.color;if(u.fg)s.style.color=u.fg;s.style.width=s.style.height=sz+"px";s.style.fontSize=Math.round(sz*.37)+"px";s.textContent=initials(u.name);return s;}
+const isAdmin=()=>me&&USERS[me.id]&&USERS[me.id].admin;
+
+$("mq1").innerHTML=TICKER.repeat(4);
+$("mq2").innerHTML=TICKER.repeat(4);
+
+/* ══════════════ SYNC ENGINE (3 levels) ══════════════ */
+/* Level A: Claude shared storage · Level B: Firebase REST · Level C: this device (localStorage) */
+const fbKey=k=>k.replace(/[.#$\[\]:\/]/g,"-");
+let mode="local";
+async function detectMode(){
+  if(typeof window.storage!=="undefined"&&window.storage&&window.storage.get){
+    try{await window.storage.get("nitro-ping",true);}catch(e){/* missing key is fine */}
+    mode="claude";
+  } else if(SYNC_URL){
+    mode="firebase";
+  } else mode="local";
+  const pill=$("syncpill");
+  if(mode==="claude"){$("syncTxt").textContent="TEAM SYNC · LIVE";pill.classList.remove("off");}
+  else if(mode==="firebase"){$("syncTxt").textContent="CLOUD SYNC · LIVE";pill.classList.remove("off");}
+  else {$("syncTxt").textContent="THIS DEVICE ONLY";pill.classList.add("off");}
+}
+async function sGet(key){
+  try{
+    if(mode==="claude"){
+      const r=await window.storage.get(key,true);
+      return r&&r.value?JSON.parse(r.value):[];
+    }
+    if(mode==="firebase"){
+      const r=await fetch(SYNC_URL.replace(/\/$/,"")+"/nitro/"+fbKey(key)+".json");
+      const d=await r.json();
+      return d||[];
+    }
+  }catch(e){/* missing key or offline → fall through */}
+  try{const d=localStorage.getItem(key);return d?JSON.parse(d):[];}catch(e){return [];}
+}
+async function sSet(key,val){
+  try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}
+  try{
+    if(mode==="claude"){await window.storage.set(key,JSON.stringify(val),true);return;}
+    if(mode==="firebase"){await fetch(SYNC_URL.replace(/\/$/,"")+"/nitro/"+fbKey(key)+".json",{method:"PUT",body:JSON.stringify(val)});return;}
+  }catch(e){
+    $("syncTxt").textContent="OFFLINE — SAVED HERE";$("syncpill").classList.add("off");
+  }
+}
+
+/* ══════════════ LOGIN ══════════════ */
+function tryLogin(){
+  const u=$("u").value.trim().toLowerCase(),p=$("p").value;
+  if(USERS[u]&&USERS[u].pw===p){me=Object.assign({id:u},USERS[u]);try{sessionStorage.setItem("nitro_me",u);}catch(e){}boot();}
+  else $("err").textContent="ACCESS DENIED — CHECK CALLSIGN & CODE";
+}
+$("go").onclick=tryLogin;
+$("p").addEventListener("keydown",e=>{if(e.key==="Enter")tryLogin();});
+$("u").addEventListener("keydown",e=>{if(e.key==="Enter")$("p").focus();});
+$("logout").onclick=()=>{try{sessionStorage.removeItem("nitro_me");}catch(e){}location.reload();};
+
+/* ══════════════ BOOT ══════════════ */
+async function boot(){
+  $("login").style.display="none";
+  $("app").classList.add("on");
+  $("meName").textContent=me.name;
+  $("meAv").replaceWith(avatar(me,30));
+  await detectMode();
+
+  // channelsexc
+  const c=$("chans");c.innerHTML="";
+  CHANNELS.forEach(ch=>{
+    const b=document.createElement("button");
+    b.className="chan"+(ch.id===chan.id?" on":"");
+    b.innerHTML='<span class="n1"><span class="hash">#</span>'+esc(ch.name)+'</span><span class="n2">'+esc(ch.desc)+'</span>';
+    b.onclick=()=>{chan=ch;document.querySelectorAll(".chan").forEach(x=>x.classList.remove("on"));b.classList.add("on");lastChat="";setChanHeader();refreshChat(true);closeSide();};
+    c.appendChild(b);
+  });
+
+  // rosters (sidebar + right rail)
+  const spots=[["rosterTeam","rosterSponsors"],["rosterTeam2","rosterSponsors2"]];
+  spots.forEach(([tid,sid])=>{
+    const rt=$(tid),rs=$(sid);if(!rt)return;rt.innerHTML="";rs.innerHTML="";
+    Object.values(USERS).forEach(u=>{
+      const d=document.createElement("div");d.className="person";
+      d.appendChild(avatar(u,28));
+      const t=document.createElement("div");
+      t.innerHTML='<div class="nm">'+esc(u.name)+'</div><div class="rl">'+esc(u.role.toUpperCase())+'</div>';
+      d.appendChild(t);(u.type==="sponsor"?rs:rt).appendChild(d);
+    });
+  });
+
+  // assignee dropdown
+  const sel=$("tkAssign");sel.innerHTML="";
+  Object.entries(USERS).filter(([,u])=>u.type!=="sponsor").forEach(([id,u])=>{
+    const o=document.createElement("option");o.value=id;o.textContent=u.name;sel.appendChild(o);
+  });
+
+  setChanHeader();
+  await seedCalendar();await seedChecklist();
+  refreshChat(true);refreshCal();refreshTasks();refreshChecklist();
+  setInterval(tick,1000);tick();
+  setInterval(()=>{
+    if(view==="comms")refreshChat(false);
+    else if(view==="calendar")refreshCal();
+    else if(view==="board")refreshTasks();
+    else refreshChecklist();
+  },4000);
+}
+try{const s=sessionStorage.getItem("nitro_me");if(s&&USERS[s]){me=Object.assign({id:s},USERS[s]);boot();}}catch(e){}
+
+/* ══════════════ TABS / SIDEBAR ══════════════ */
+document.querySelectorAll("#tabs .tab").forEach(t=>{
+  t.onclick=()=>{
+    view=t.dataset.v;
+    document.querySelectorAll("#tabs .tab").forEach(x=>x.classList.toggle("on",x===t));
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("on"));
+    $("v-"+view).classList.add("on");
+    if(view==="comms")refreshChat(true);else if(view==="calendar")refreshCal();else if(view==="board")refreshTasks();else refreshChecklist();
+  };
+});
+function closeSide(){$("side").classList.remove("open");$("overlay").classList.remove("on");}
+$("burger").onclick=()=>{$("side").classList.toggle("open");$("overlay").classList.toggle("on",$("side").classList.contains("open"));};
+$("overlay").onclick=closeSide;
+
+/* ══════════════ COUNTDOWN ══════════════ */
+function tick(){
+  const now=Date.now();
+  const set=(D,H,M,S)=>{["cdD","cdD2"].forEach(i=>$(i).textContent=D);["cdH","cdH2"].forEach(i=>$(i).textContent=H);["cdM","cdM2"].forEach(i=>$(i).textContent=M);["cdS","cdS2"].forEach(i=>$(i).textContent=S);};
+  if(now>=NAT_START&&now<NAT_END){set("🏁","LIVE","",""); return;}
+  const d=Math.max(0,NAT_START-now);
+  set(Math.floor(d/864e5),String(Math.floor(d/36e5)%24).padStart(2,"0"),String(Math.floor(d/6e4)%60).padStart(2,"0"),String(Math.floor(d/1e3)%60).padStart(2,"0"));
+}
+
+/* ══════════════ CHAT ══════════════ */
+function setChanHeader(){$("chanName").textContent=chan.name;$("chanDesc").textContent=chan.desc;}
+async function refreshChat(scroll){
+  const msgs=await sGet("nitro-chat:"+chan.id);
+  const j=JSON.stringify(msgs.map(m=>m.id));
+  if(j===lastChat)return;lastChat=j;
+  const f=$("feed");f.innerHTML="";
+  if(!msgs.length){
+    f.innerHTML='<div class="empty"><div class="big">RADIO SILENCE</div><p>No messages in #'+esc(chan.name)+' yet.<br>Type below to start — everyone on the team will see it.</p></div>';
+    return;
+  }
+  let lastDay="",lastUid="";
+  msgs.forEach(m=>{
+    const day=new Date(m.ts).toLocaleDateString('en',{weekday:'short',day:'numeric',month:'short'});
+    if(day!==lastDay){const s=document.createElement("div");s.className="day-sep";s.textContent=day.toUpperCase();f.appendChild(s);lastDay=day;lastUid="";}
+    const u=USERS[m.uid]||{name:m.uname||"Unknown",color:"#8B96B8",type:"team",role:""};
+    const cont=m.uid===lastUid;
+    const d=document.createElement("div");
+    d.className="msg"+(cont?" cont":"")+(me&&m.uid===me.id?" mine":"");
+    d.appendChild(avatar(u,36));
+    const b=document.createElement("div");
+    if(!cont){
+      const badge=u.type==="sponsor"?'<span class="badge sponsor">Partner</span>':'<span class="badge team">Crew</span>';
+      b.innerHTML='<div class="line1"><span class="who">'+esc(u.name)+'</span>'+badge+'<span class="when">'+new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+'</span></div>';
+    }
+    const tx=document.createElement("div");tx.className="txt";tx.textContent=m.text;b.appendChild(tx);
+    d.appendChild(b);f.appendChild(d);
+    lastUid=m.uid;
+  });
+  if(scroll!==false)f.scrollTop=f.scrollHeight;
+}
+async function sendMsg(){
+  const t=$("box").value.trim();if(!t||!me)return;
+  $("box").value="";autoGrow();
+  const cur=await sGet("nitro-chat:"+chan.id);
+  cur.push({id:uid(),uid:me.id,uname:me.name,text:t.slice(0,2000),ts:Date.now()});
+  while(cur.length>300)cur.shift();
+  await sSet("nitro-chat:"+chan.id,cur);
+  lastChat="";refreshChat(true);
+}
+$("send").onclick=sendMsg;
+$("box").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();}});
+function autoGrow(){const b=$("box");b.style.height="auto";b.style.height=Math.min(b.scrollHeight,130)+"px";}
+$("box").addEventListener("input",autoGrow);
+
+/* ══════════════ CALENDAR ══════════════ */
+async function seedCalendar(){
+  const ev=await sGet("nitro-cal");
+  if(ev.length)return;
+  await sSet("nitro-cal",[
+    {id:uid(),date:"2026-07-29",time:"17:00",title:"Final deck run-through & car pack",tag:"deadline",by:"System"},
+    {id:uid(),date:"2026-07-31",time:"09:00",title:"Nationals Day 1 — Scrutineering & pit setup",tag:"race",by:"System"},
+    {id:uid(),date:"2026-08-01",time:"09:00",title:"Nationals Day 2 — Racing & judging",tag:"race",by:"System"},
+    {id:uid(),date:"2026-08-02",time:"09:00",title:"Nationals Day 3 — Finals & awards",tag:"race",by:"System"}
+  ]);
+}
+async function refreshCal(){
+  calCache=await sGet("nitro-cal");
+  drawCal();drawDay();
+}
+function drawCal(){
+  const y=calCursor.getFullYear(),m=calCursor.getMonth();
+  $("calTitle").textContent=calCursor.toLocaleString('en',{month:'long',year:'numeric'});
+  const g=$("calGrid");g.innerHTML="";
+  ["SUN","MON","TUE","WED","THU","FRI","SAT"].forEach(d=>{const e=document.createElement("div");e.className="dow";e.textContent=d;g.appendChild(e);});
+  const first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();
+  const todayStr=new Date().toISOString().slice(0,10);
+  for(let i=0;i<first;i++){const b=document.createElement("div");b.className="day blank";g.appendChild(b);}
+  for(let d=1;d<=days;d++){
+    const ds=y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+    const cell=document.createElement("div");
+    cell.className="day"+(ds===todayStr?" today":"")+(ds===selDate?" sel":"");
+    const tags=[...new Set(calCache.filter(e=>e.date===ds).map(e=>e.tag||"team"))];
+    cell.innerHTML='<span class="dn">'+d+'</span><span class="dots">'+tags.map(t=>'<span class="dt '+t+'"></span>').join("")+'</span>';
+    cell.onclick=()=>{selDate=ds;drawCal();drawDay();};
+    g.appendChild(cell);
+  }
+}
+function drawDay(){
+  const box=$("dayEvents");
+  $("dayTitle").textContent=new Date(selDate+"T00:00").toLocaleDateString('en',{weekday:'long',day:'numeric',month:'long'});
+  const evs=calCache.filter(e=>e.date===selDate).sort((a,b)=>(a.time||"").localeCompare(b.time||""));
+  box.innerHTML="";
+  if(!evs.length){box.innerHTML='<div class="noev">Nothing planned for this day yet.<br>Add something below — the whole team will see it instantly.</div>';return;}
+  evs.forEach(e=>{
+    const canDel=me&&(isAdmin()||e.byId===me.id);
+    const d=document.createElement("div");d.className="evi";
+    d.innerHTML='<span class="bar '+(e.tag||"team")+'"></span><div><div class="t">'+esc(e.title)+'</div><div class="s">'+(e.time?e.time+" · ":"")+'added by '+esc(e.by||"team")+'</div></div>'+(canDel?'<button class="x" data-id="'+e.id+'" aria-label="Remove">✕</button>':'');
+    box.appendChild(d);
+  });
+  box.querySelectorAll(".x").forEach(b=>b.onclick=async()=>{
+    const ev=await sGet("nitro-cal");
+    await sSet("nitro-cal",ev.filter(x=>x.id!==b.dataset.id));
+    refreshCal();
+  });
+}
+$("evAdd").onclick=async()=>{
+  const t=$("evTitle").value.trim();if(!t||!selDate)return;
+  const ev=await sGet("nitro-cal");
+  ev.push({id:uid(),date:selDate,time:$("evTime").value||"",title:t,tag:$("evTag").value,by:me.name,byId:me.id});
+  while(ev.length>200)ev.shift();
+  await sSet("nitro-cal",ev);
+  $("evTitle").value="";$("evTime").value="";
+  refreshCal();
+};
+$("evTitle").addEventListener("keydown",e=>{if(e.key==="Enter")$("evAdd").click();});
+$("calPrev").onclick=()=>{calCursor=new Date(calCursor.getFullYear(),calCursor.getMonth()-1,1);drawCal();};
+$("calNext").onclick=()=>{calCursor=new Date(calCursor.getFullYear(),calCursor.getMonth()+1,1);drawCal();};
+
+/* ══════════════ MISSIONS ══════════════ */
+async function refreshTasks(){
+  const tasks=await sGet("nitro-tasks");
+  const j=JSON.stringify(tasks.map(t=>t.id+(t.status||"")));
+  if(j===lastTasks)return;lastTasks=j;
+  const cols={todo:$("colTodo"),doing:$("colDoing"),done:$("colDone")};
+  Object.values(cols).forEach(c=>c.innerHTML="");
+  const counts={todo:0,doing:0,done:0};
+  tasks.forEach(t=>{
+    const st=t.status||"todo";counts[st]++;
+    const u=USERS[t.assign]||{name:"Team"};
+    const d=document.createElement("div");d.className="card"+(st==="done"?" fin":"");
+    let act="";
+    if(st==="todo")act='<button class="pill go" data-a="doing" data-id="'+t.id+'">Start ›</button>';
+    else if(st==="doing")act='<button class="pill" data-a="todo" data-id="'+t.id+'">‹ Back</button><button class="pill go" data-a="done" data-id="'+t.id+'">Done ✓</button>';
+    else act='<button class="pill" data-a="doing" data-id="'+t.id+'">Reopen</button><button class="pill" data-a="del" data-id="'+t.id+'">✕</button>';
+    d.innerHTML='<div class="tt">'+esc(t.title)+'</div><div class="meta"><span class="as">→ '+esc(u.name.toUpperCase())+'</span><span class="mv">'+act+'</span></div>';
+    cols[st].appendChild(d);
+  });
+  $("nTodo").textContent=counts.todo;$("nDoing").textContent=counts.doing;$("nDone").textContent=counts.done;
+  if(!counts.todo&&!counts.doing&&!counts.done){
+    cols.todo.innerHTML='<div class="noev" style="padding:14px">No missions yet. Add the first one above — try "Polish car body" or "Print portfolio".</div>';
+  }
+  document.querySelectorAll(".mv .pill").forEach(b=>b.onclick=async()=>{
+    const tasks=await sGet("nitro-tasks");
+    const out=b.dataset.a==="del"?tasks.filter(t=>t.id!==b.dataset.id):tasks.map(t=>t.id===b.dataset.id?Object.assign({},t,{status:b.dataset.a}):t);
+    await sSet("nitro-tasks",out);
+    lastTasks="";refreshTasks();
+  });
+}
+$("tkAdd").onclick=async()=>{
+  const t=$("tkTitle").value.trim();if(!t)return;
+  const tasks=await sGet("nitro-tasks");
+  tasks.push({id:uid(),title:t,assign:$("tkAssign").value,status:"todo",by:me.id,ts:Date.now()});
+  while(tasks.length>200)tasks.shift();
+  await sSet("nitro-tasks",tasks);
+  $("tkTitle").value="";lastTasks="";refreshTasks();
+};
+$("tkTitle").addEventListener("keydown",e=>{if(e.key==="Enter")$("tkAdd").click();});
+
+/* ══════════════ RACE-DAY CHECKLIST ══════════════ */
+async function seedChecklist(){
+  const c=await sGet("nitro-checklist");
+  if(c.length)return;
+  await sSet("nitro-checklist",CHECK_SEED.map(l=>({id:uid(),label:l,done:false})));
+}
+async function refreshChecklist(){
+  const items=await sGet("nitro-checklist");
+  const j=JSON.stringify(items.map(i=>i.id+(i.done?"1":"0")));
+  if(j===lastChk)return;lastChk=j;
+  const box=$("chkList");box.innerHTML="";
+  let done=0;
+  items.forEach(i=>{
+    if(i.done)done++;
+    const d=document.createElement("div");d.className="chk-i"+(i.done?" done":"");
+    d.innerHTML='<span class="tick">'+(i.done?"✓":"")+'</span><span class="cl">'+esc(i.label)+'</span>';
+    d.onclick=async()=>{
+      const items=await sGet("nitro-checklist");
+      await sSet("nitro-checklist",items.map(x=>x.id===i.id?Object.assign({},x,{done:!x.done,by:me.name}):x));
+      lastChk="";refreshChecklist();
+    };
+    box.appendChild(d);
+  });
+  const pct=items.length?Math.round(done/items.length*100):0;
+  $("progFill").style.width=pct+"%";
+  $("progLab").textContent=done+" OF "+items.length+" READY · "+pct+"%";
+}
+</script>
+</body>
+</html>
