@@ -1,35 +1,5 @@
 <!DOCTYPE html>
-<!--
-═══════════════════════════════════════════════════════════════════
-  ORB!TUS DIGITAL TWIN — TEAM N!TRO HQ
-  Single-file website: chat · shared calendar · missions · race HQ
-═══════════════════════════════════════════════════════════════════
 
-HOW TO PUT THIS ON GITHUB (GitHub Pages):
-  1. Create a repo (e.g. "orbitus-hq") on github.com
-  2. Upload this file and rename it to  index.html
-  3. Repo → Settings → Pages → Source: "main" branch → Save
-  4. Your site is live at  https://<username>.github.io/orbitus-hq/
-
-MAKING CHAT / CALENDAR / MISSIONS SYNC FOR THE WHOLE TEAM:
-  This site has a 3-level sync engine (it picks the best available):
-   A) Claude shared storage — automatic if you publish this file as a
-      Claude artifact (no setup).
-   B) Firebase — for GitHub Pages. FREE, 5 minutes:
-      1. console.firebase.google.com → Add project (any name)
-      2. Build → Realtime Database → Create database → Start in TEST mode
-      3. Copy the database URL, it looks like:
-         https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app
-      4. Paste it into SYNC_URL just below (keep the quotes), re-upload.
-      Everyone who opens the GitHub link now shares the same live data.
-   C) If neither is available → data saves on that device only, and the
-      status pill at the top says "THIS DEVICE ONLY" so nobody is confused.
-
-CHANGING USERNAMES / ACCESS CODES:
-  Edit the USERS block below. Codes are visible to anyone who reads the
-  page source — this is a team clubhouse, not a bank. Don't post
-  sensitive info (sponsor amounts, personal details) in the chat.
--->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
