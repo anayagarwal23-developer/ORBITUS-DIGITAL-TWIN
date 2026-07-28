@@ -1,10 +1,42 @@
 <!DOCTYPE html>
+<!--
+═══════════════════════════════════════════════════════════════════
+  ORB!TUS DIGITAL TWIN — TEAM N!TRO HQ
+  Single-file website: chat · shared calendar · missions · race HQ
+═══════════════════════════════════════════════════════════════════
 
+HOW TO PUT THIS ON GITHUB (GitHub Pages):
+  1. Create a repo (e.g. "orbitus-hq") on github.com
+  2. Upload this file and rename it to  index.html
+  3. Repo → Settings → Pages → Source: "main" branch → Save
+  4. Your site is live at  https://<username>.github.io/orbitus-hq/
+
+MAKING CHAT / CALENDAR / MISSIONS SYNC FOR THE WHOLE TEAM:
+  This site has a 3-level sync engine (it picks the best available):
+   A) Claude shared storage — automatic if you publish this file as a
+      Claude artifact (no setup).
+   B) Firebase — for GitHub Pages. FREE, 5 minutes:
+      1. console.firebase.google.com → Add project (any name)
+      2. Build → Realtime Database → Create database → Start in TEST mode
+      3. Copy the database URL, it looks like:
+         https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app
+      4. Paste it into SYNC_URL just below (keep the quotes), re-upload.
+      Everyone who opens the GitHub link now shares the same live data.
+   C) If neither is available → data saves on that device only, and the
+      status pill at the top says "THIS DEVICE ONLY" so nobody is confused.
+
+CHANGING USERNAMES / ACCESS CODES:
+  Edit the USERS block below. Codes are visible to anyone who reads the
+  page source — this is a team clubhouse, not a bank. Don't post
+  sensitive info (sponsor amounts, personal details) in the chat.
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>ORB!TUS Digital Twin — Team N!TRO</title>
+<meta name="theme-color" content="#0B132B">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B132B'/%3E%3Ctext x='32' y='45' font-family='Arial,sans-serif' font-size='36' font-weight='700' text-anchor='middle' fill='%23FFFFE1'%3EN%3Ctspan fill='%23F04F6A'%3E!%3C/tspan%3E%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -13,6 +45,7 @@
   --pink:#F04F6A; --olo:#00E0C6; --vanilla:#FFFFE1;
   --text:#EAEEFA; --muted:#8B96B8;
   --disp:'Space Grotesk',sans-serif; --mono:'JetBrains Mono',monospace;
+  color-scheme:dark;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
@@ -247,6 +280,18 @@ aside{width:268px;min-width:268px;background:var(--navy);border-right:1px solid 
 }
 #overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:35}
 #overlay.on{display:block}
+
+/* polish */
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px;border:2px solid var(--navy-deep)}
+::-webkit-scrollbar-thumb:hover{background:#2A3A6E}
+::-webkit-scrollbar-track{background:transparent}
+aside,.roster,.cal-side,#feed,.col-body,.hq,.calscroll{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.card,.evi,.chk-i,.panelbox{transition:border-color .15s}
+.card:hover,.evi:hover{border-color:#2A3A6E}
+#send:disabled{opacity:.35;cursor:default;transform:none}
+@keyframes shake{0%,100%{transform:none}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.login-err.on{animation:shake .25s ease}
 </style>
 </head>
 <body>
@@ -256,7 +301,7 @@ aside{width:268px;min-width:268px;background:var(--navy);border-right:1px solid 
   <div class="marquee"><div class="marquee-inner" id="mq1"></div></div>
   <div class="login-mid">
     <div class="login-card">
-      <div class="login-eyebrow">ORB!TUS DIGITAL TWIN · TEAM HQ</div>
+      <div class="login-eyebrow">ORB!TUS DIGITAL TWIN · SEASON 2026-27</div>
       <h1>N<span class="bang">!</span>TRO</h1>
       <p class="login-sub">The pursuit of zero friction — one HQ for the whole team. Chat, shared calendar, missions and race-day tools.</p>
       <div class="field"><label for="u">Callsign</label><input id="u" autocomplete="username" placeholder="e.g. aryeh" autocapitalize="none"></div>
@@ -317,7 +362,7 @@ aside{width:268px;min-width:268px;background:var(--navy);border-right:1px solid 
       <div class="composer">
         <div class="composer-row">
           <textarea id="box" placeholder="Message the team…" rows="1"></textarea>
-          <button id="send" aria-label="Send">↑</button>
+          <button id="send" aria-label="Send" disabled>↑</button>
         </div>
         <div class="hint">ENTER TO SEND · SHIFT+ENTER = NEW LINE · SYNCS TO EVERYONE IN SECONDS</div>
       </div>
@@ -337,6 +382,7 @@ aside{width:268px;min-width:268px;background:var(--navy);border-right:1px solid 
           <button class="navb" id="calPrev" aria-label="Previous month">‹</button>
           <h2 id="calTitle"></h2>
           <button class="navb" id="calNext" aria-label="Next month">›</button>
+          <button class="navb" id="calToday" style="width:auto;padding:0 16px;font-family:var(--mono);font-size:10px;letter-spacing:.14em">TODAY</button>
         </div>
         <div class="legend">
           <span><span class="dt team"></span>TEAM</span>
@@ -400,7 +446,7 @@ aside{width:268px;min-width:268px;background:var(--navy);border-right:1px solid 
         <div class="panelbox">
           <div class="panel-h"><span>LIVE TWIN · RACE SPEC</span></div>
           <div class="twin-name">ORB<span class="bang">!</span>TUS</div>
-          <div class="twin-sub">SAPPHIRE 2026 · POLYURETHANE / PA12 / CERAMIC</div>
+          <div class="twin-sub">SEASON 2026-27 · POLYURETHANE / PA12 / CERAMIC</div>
           <div class="twin-grid">
             <div class="twin-cell"><div class="k">Drag</div><div class="v">0.168 <em>Cd</em></div></div>
             <div class="twin-cell"><div class="k">Mass</div><div class="v">51.0 <em>g</em></div></div>
@@ -412,7 +458,7 @@ aside{width:268px;min-width:268px;background:var(--navy);border-right:1px solid 
         </div>
 
         <div class="panelbox">
-          <div class="panel-h"><span>RACE-DAY CHECKLIST · SHARED</span></div>
+          <div class="panel-h"><span>RACE-DAY CHECKLIST · SHARED</span><button id="chkReset" class="pill" style="display:none;font-size:10px;padding:5px 12px">RESET ALL</button></div>
           <div class="chk" id="chkList"></div>
           <div class="chk-prog">
             <div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
@@ -475,7 +521,7 @@ const CHECK_SEED=[
   "Verbal presentation rehearsed",
   "Backup car packed & labelled"
 ];
-const TICKER="ZERO FRICTION — AERODYNAMIC PRECISION — ENGINEERING EXCELLENCE — <b>SAPPHIRE 2026</b> — Cd 0.168 — 51g RACE WEIGHT — CNC MILLED — <b>NATIONALS · SHARDA UNIVERSITY</b> — ";
+const TICKER="ZERO FRICTION — AERODYNAMIC PRECISION — ENGINEERING EXCELLENCE — <b>ORB!TUS 2026-27</b> — Cd 0.168 — 51g RACE WEIGHT — CNC MILLED — <b>NATIONALS · SHARDA UNIVERSITY</b> — ";
 const NAT_START=new Date("2026-07-31T09:00:00+05:30").getTime();
 const NAT_END=new Date("2026-08-02T18:00:00+05:30").getTime();
 
@@ -539,7 +585,7 @@ async function sSet(key,val){
 function tryLogin(){
   const u=$("u").value.trim().toLowerCase(),p=$("p").value;
   if(USERS[u]&&USERS[u].pw===p){me=Object.assign({id:u},USERS[u]);try{sessionStorage.setItem("nitro_me",u);}catch(e){}boot();}
-  else $("err").textContent="ACCESS DENIED — CHECK CALLSIGN & CODE";
+  else{const e=$("err");e.textContent="ACCESS DENIED — CHECK CALLSIGN & CODE";e.classList.remove("on");void e.offsetWidth;e.classList.add("on");}
 }
 $("go").onclick=tryLogin;
 $("p").addEventListener("keydown",e=>{if(e.key==="Enter")tryLogin();});
@@ -554,7 +600,7 @@ async function boot(){
   $("meAv").replaceWith(avatar(me,30));
   await detectMode();
 
-  // channelsexc
+  // channels
   const c=$("chans");c.innerHTML="";
   CHANNELS.forEach(ch=>{
     const b=document.createElement("button");
@@ -583,6 +629,7 @@ async function boot(){
     const o=document.createElement("option");o.value=id;o.textContent=u.name;sel.appendChild(o);
   });
 
+  if(isAdmin())$("chkReset").style.display="inline-block";
   setChanHeader();
   await seedCalendar();await seedChecklist();
   refreshChat(true);refreshCal();refreshTasks();refreshChecklist();
@@ -620,7 +667,7 @@ function tick(){
 }
 
 /* ══════════════ CHAT ══════════════ */
-function setChanHeader(){$("chanName").textContent=chan.name;$("chanDesc").textContent=chan.desc;}
+function setChanHeader(){$("chanName").textContent=chan.name;$("chanDesc").textContent=chan.desc;$("box").placeholder="Message #"+chan.name+"…";}
 async function refreshChat(scroll){
   const msgs=await sGet("nitro-chat:"+chan.id);
   const j=JSON.stringify(msgs.map(m=>m.id));
@@ -652,7 +699,7 @@ async function refreshChat(scroll){
 }
 async function sendMsg(){
   const t=$("box").value.trim();if(!t||!me)return;
-  $("box").value="";autoGrow();
+  $("box").value="";autoGrow();$("send").disabled=true;
   const cur=await sGet("nitro-chat:"+chan.id);
   cur.push({id:uid(),uid:me.id,uname:me.name,text:t.slice(0,2000),ts:Date.now()});
   while(cur.length>300)cur.shift();
@@ -662,7 +709,7 @@ async function sendMsg(){
 $("send").onclick=sendMsg;
 $("box").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();}});
 function autoGrow(){const b=$("box");b.style.height="auto";b.style.height=Math.min(b.scrollHeight,130)+"px";}
-$("box").addEventListener("input",autoGrow);
+$("box").addEventListener("input",()=>{autoGrow();$("send").disabled=!$("box").value.trim();});
 
 /* ══════════════ CALENDAR ══════════════ */
 async function seedCalendar(){
@@ -727,6 +774,7 @@ $("evAdd").onclick=async()=>{
 $("evTitle").addEventListener("keydown",e=>{if(e.key==="Enter")$("evAdd").click();});
 $("calPrev").onclick=()=>{calCursor=new Date(calCursor.getFullYear(),calCursor.getMonth()-1,1);drawCal();};
 $("calNext").onclick=()=>{calCursor=new Date(calCursor.getFullYear(),calCursor.getMonth()+1,1);drawCal();};
+$("calToday").onclick=()=>{const t=new Date();calCursor=new Date(t.getFullYear(),t.getMonth(),1);selDate=t.toISOString().slice(0,10);drawCal();drawDay();};
 
 /* ══════════════ MISSIONS ══════════════ */
 async function refreshTasks(){
@@ -795,6 +843,12 @@ async function refreshChecklist(){
   $("progFill").style.width=pct+"%";
   $("progLab").textContent=done+" OF "+items.length+" READY · "+pct+"%";
 }
+$("chkReset").onclick=async()=>{
+  if(!confirm("Untick every checklist item for the whole team?"))return;
+  const items=await sGet("nitro-checklist");
+  await sSet("nitro-checklist",items.map(x=>Object.assign({},x,{done:false})));
+  lastChk="";refreshChecklist();
+};
 </script>
 </body>
 </html>
