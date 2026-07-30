@@ -163,6 +163,8 @@ aside{width:268px;min-width:268px;background:var(--navy);border-right:1px solid 
 #box::placeholder{color:var(--muted)}
 #send{width:40px;height:40px;border-radius:11px;background:var(--pink);color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex:none;transition:transform .12s}
 #send:active{transform:scale(.9)}
+.unver .txt{opacity:.45}
+.uv{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;color:var(--pink);margin-top:4px}
 .mdel{align-self:center;color:var(--muted);font-size:12px;padding:6px 8px;opacity:0;transition:opacity .12s}
 .msg:hover .mdel{opacity:1}
 .mdel:hover{color:var(--pink)}
@@ -482,7 +484,7 @@ aside,.roster,.cal-side,#feed,.col-body,.hq,.calscroll{scrollbar-width:thin;scro
         <div class="panelbox" id="devPanel" style="display:none">
           <div class="panel-h"><span>ACCOUNT SECURITY · ADMIN ONLY</span></div>
           <div class="chk" id="devList"></div>
-          <div class="chk-prog"><div class="prog-lab">EACH ACCOUNT LOCKS TO THE FIRST DEVICE THAT SIGNS IN. RESET IF SOMEONE CHANGES PHONE OR GOT HIJACKED.</div></div>
+          <div class="chk-prog"><div class="prog-lab">NOBODY CAN ENTER AN ACCOUNT UNTIL YOU APPROVE THEIR DEVICE HERE. CHECK WITH THE PERSON FACE-TO-FACE BEFORE APPROVING. EVERY MESSAGE IS SIGNED BY THE APPROVED DEVICE’S SECRET KEY — FORGED MESSAGES GET FLAGGED IN CHAT. RESET IF SOMEONE CHANGES PHONE.</div></div>
         </div>
 
         <div class="panelbox">
@@ -549,6 +551,7 @@ let me=null,chan=CHANNELS[0],view="comms";
 let lastChat="",lastCal="",lastTasks="",lastChk="";
 let calCursor=new Date(2026,6,1), selDate=new Date().toISOString().slice(0,10);
 let calCache=[];
+const verCache=new Map();
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -605,19 +608,43 @@ async function sha256(t){const b=await crypto.subtle.digest("SHA-256",new TextEn
 function getDev(){let d=localStorage.getItem("nitro_device");if(!d){d=uid()+"-"+uid();localStorage.setItem("nitro_device",d);}return d;}
 async function loginAs(u,silent){
   await detectMode();
-  if(!USERS[u].admin&&mode!=="local"){
+  if(mode!=="local"){
     let map=await sGet("nitro-devices");if(!map||Array.isArray(map))map={};
     const dev=getDev();
-    if(!map[u]){map[u]={dev:dev,since:Date.now()};await sSet("nitro-devices",map);}
-    else if(map[u].dev!==dev){
-      try{sessionStorage.removeItem("nitro_me");}catch(e){}
-      if(!silent)loginFail("THIS ACCOUNT IS LOCKED TO ITS OWNER'S DEVICE — ASK ANAY TO RESET IT");
-      return;
-    }
+    if(!USERS[u].admin){
+      if(!map[u]){
+        map[u]={dev:dev,since:Date.now(),pending:true};
+        await sSet("nitro-devices",map);
+        try{sessionStorage.removeItem("nitro_me");}catch(e){}
+        if(!silent)loginFail("DEVICE REGISTERED — ASK ANAY TO APPROVE IT, THEN SIGN IN AGAIN");
+        return;
+      }
+      if(map[u].pending){
+        try{sessionStorage.removeItem("nitro_me");}catch(e){}
+        if(!silent)loginFail(map[u].dev===dev?"WAITING FOR ANAY'S APPROVAL — TRY AGAIN ONCE HE APPROVES":"A DIFFERENT DEVICE IS WAITING FOR APPROVAL ON THIS ACCOUNT — TELL ANAY");
+        return;
+      }
+      if(map[u].dev!==dev){
+        try{sessionStorage.removeItem("nitro_me");}catch(e){}
+        if(!silent)loginFail("THIS ACCOUNT IS LOCKED TO ITS OWNER'S DEVICE — ASK ANAY TO RESET IT");
+        return;
+      }
+    } else if(!map[u]){map[u]={dev:dev,since:Date.now()};}
+    await ensureKeys(u,map);
   }
   me=Object.assign({id:u},USERS[u]);
   try{sessionStorage.setItem("nitro_me",u);}catch(e){}
   boot();
+}
+async function ensureKeys(u,map){
+  const kn="nitro_key_"+u;
+  let priv=null;try{priv=JSON.parse(localStorage.getItem(kn)||"null");}catch(e){}
+  if(!priv||!map[u].pub){
+    const kp=await genKey();
+    try{localStorage.setItem(kn,JSON.stringify(kp.priv));}catch(e){}
+    map[u].pub=kp.pub;
+    await sSet("nitro-devices",map);
+  }
 }
 function loginFail(msg){const e=$("err");e.textContent=msg||"ACCESS DENIED — CHECK CALLSIGN & CODE";e.classList.remove("on");void e.offsetWidth;e.classList.add("on");}
 let failCount=0,lockUntil=0;
@@ -635,6 +662,11 @@ async function tryLogin(){
 /* --- Face ID / fingerprint (WebAuthn, bound to this device) --- */
 const B64=a=>btoa(String.fromCharCode(...new Uint8Array(a)));
 const U8=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+/* Per-device signing keys: every message is cryptographically signed by the
+   sender's device. Other people's devices cannot forge a valid signature. */
+async function genKey(){const k=await crypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);return{pub:await crypto.subtle.exportKey("jwk",k.publicKey),priv:await crypto.subtle.exportKey("jwk",k.privateKey)};}
+async function signMsg(privJwk,data){const k=await crypto.subtle.importKey("jwk",privJwk,{name:"ECDSA",namedCurve:"P-256"},false,["sign"]);return B64(await crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},k,new TextEncoder().encode(data)));}
+async function verifyMsg(pubJwk,sigB64,data){try{const k=await crypto.subtle.importKey("jwk",pubJwk,{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);return await crypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},k,U8(sigB64),new TextEncoder().encode(data));}catch(e){return false;}}
 function bioInfo(){try{return JSON.parse(localStorage.getItem("nitro_bio")||"null");}catch(e){return null;}}
 async function offerBio(){
   if(!window.PublicKeyCredential||bioInfo()||!me)return;
@@ -769,6 +801,16 @@ async function refreshChat(scroll){
     f.innerHTML='<div class="empty"><div class="big">RADIO SILENCE</div><p>No messages in #'+esc(chan.name)+' yet.<br>Type below to start — everyone on the team will see it.</p></div>';
     return;
   }
+  let devMap={};
+  if(mode!=="local"){const dm=await sGet("nitro-devices");if(dm&&!Array.isArray(dm))devMap=dm;}
+  const verd={};
+  await Promise.all(msgs.map(async m=>{
+    if(mode==="local"){verd[m.id]=true;return;}
+    if(verCache.has(m.id)){verd[m.id]=verCache.get(m.id);return;}
+    let ok=false;const rec=devMap[m.uid];
+    if(m.sig&&rec&&rec.pub)ok=await verifyMsg(rec.pub,m.sig,m.uid+"|"+m.text+"|"+m.ts);
+    verCache.set(m.id,ok);verd[m.id]=ok;
+  }));
   let lastDay="",lastUid="";
   msgs.forEach(m=>{
     const day=new Date(m.ts).toLocaleDateString('en',{weekday:'short',day:'numeric',month:'short'});
@@ -776,7 +818,7 @@ async function refreshChat(scroll){
     const u=USERS[m.uid]||{name:m.uname||"Unknown",color:"#8B96B8",type:"team",role:""};
     const cont=m.uid===lastUid;
     const d=document.createElement("div");
-    d.className="msg"+(cont?" cont":"")+(me&&m.uid===me.id?" mine":"");
+    d.className="msg"+(cont?" cont":"")+(me&&m.uid===me.id?" mine":"")+(verd[m.id]?"":" unver");
     d.appendChild(avatar(u,36));
     const b=document.createElement("div");
     if(!cont){
@@ -784,6 +826,7 @@ async function refreshChat(scroll){
       b.innerHTML='<div class="line1"><span class="who">'+esc(u.name)+'</span>'+badge+'<span class="when">'+new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+'</span></div>';
     }
     const tx=document.createElement("div");tx.className="txt";tx.textContent=m.text;b.appendChild(tx);
+    if(!verd[m.id]){const w=document.createElement("div");w.className="uv";w.textContent="NOT VERIFIED — DID NOT COME FROM THIS ACCOUNT'S DEVICE";b.appendChild(w);}
     d.appendChild(b);
     if(isAdmin()){
       const del=document.createElement("button");del.className="mdel";del.textContent="✕";del.title="Delete this message";
@@ -799,7 +842,10 @@ async function sendMsg(){
   const t=$("box").value.trim();if(!t||!me)return;
   $("box").value="";autoGrow();$("send").disabled=true;
   const cur=await sGet("nitro-chat:"+chan.id);
-  cur.push({id:uid(),uid:me.id,uname:me.name,text:clean(t.slice(0,2000)),ts:Date.now()});
+  const ts=Date.now(),txt=clean(t.slice(0,2000));
+  const msg={id:uid(),uid:me.id,uname:me.name,text:txt,ts:ts};
+  try{const priv=JSON.parse(localStorage.getItem("nitro_key_"+me.id)||"null");if(priv)msg.sig=await signMsg(priv,me.id+"|"+txt+"|"+ts);}catch(e){}
+  cur.push(msg);
   while(cur.length>300)cur.shift();
   await sSet("nitro-chat:"+chan.id,cur);
   lastChat="";refreshChat(true);
@@ -944,18 +990,24 @@ async function refreshChecklist(){
 async function refreshDevices(){
   if(!isAdmin())return;
   let map=await sGet("nitro-devices");if(!map||Array.isArray(map))map={};
-  const box=$("devList");box.innerHTML="";
-  Object.entries(USERS).forEach(([id,u])=>{
-    if(u.admin)return;
-    const b=map[id];
-    const d=document.createElement("div");d.className="chk-i";d.style.cursor="default";
-    d.innerHTML='<span class="cl" style="flex:1">'+esc(u.name)+' — '+(b?'locked since '+new Date(b.since).toLocaleDateString('en',{day:'2-digit',month:'short'}):'no device yet')+'</span>'+(b?'<button class="pill" data-u="'+id+'">Reset</button>':'');
-    box.appendChild(d);
-  });
+  const rows=await Promise.all(Object.entries(USERS).map(async([id,u])=>{
+    if(u.admin)return "";
+    const b=map[id];let fp="";
+    if(b&&b.pub){try{fp=" · KEY "+(await sha256(JSON.stringify(b.pub))).slice(0,8).toUpperCase();}catch(e){}}
+    let status,btns;
+    if(!b){status='no device yet';btns='';}
+    else if(b.pending){status='<b style="color:var(--vanilla)">DEVICE WAITING FOR YOUR APPROVAL</b> · asked '+new Date(b.since).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});btns='<button class="pill go" data-a="ok" data-u="'+id+'">Approve</button><button class="pill" data-a="no" data-u="'+id+'">Reject</button>';}
+    else{status='locked since '+new Date(b.since).toLocaleDateString('en',{day:'2-digit',month:'short'})+fp;btns='<button class="pill" data-a="no" data-u="'+id+'">Reset</button>';}
+    return '<div class="chk-i" style="cursor:default"><span class="cl" style="flex:1">'+esc(u.name)+' — '+status+'</span>'+btns+'</div>';
+  }));
+  const box=$("devList");box.innerHTML=rows.join("");
   box.querySelectorAll(".pill").forEach(bt=>bt.onclick=async()=>{
     let map=await sGet("nitro-devices");if(!map||Array.isArray(map))map={};
-    delete map[bt.dataset.u];
+    const u=bt.dataset.u;
+    if(bt.dataset.a==="ok"&&map[u])delete map[u].pending;
+    else delete map[u];
     await sSet("nitro-devices",map);
+    verCache.clear();
     refreshDevices();
   });
 }
