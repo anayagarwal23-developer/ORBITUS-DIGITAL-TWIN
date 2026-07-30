@@ -1,5 +1,41 @@
 <!DOCTYPE html>
+<!--
+═══════════════════════════════════════════════════════════════════
+  ORB!TUS DIGITAL TWIN — TEAM N!TRO HQ
+  Single-file website: chat · shared calendar · missions · race HQ
+═══════════════════════════════════════════════════════════════════
 
+HOW TO PUT THIS ON GITHUB (GitHub Pages):
+  1. Create a repo (e.g. "orbitus-hq") on github.com
+  2. Upload this file and rename it to  index.html
+  3. Repo → Settings → Pages → Source: "main" branch → Save
+  4. Your site is live at  https://<username>.github.io/orbitus-hq/
+
+MAKING CHAT / CALENDAR / MISSIONS SYNC FOR THE WHOLE TEAM:
+  This site has a 3-level sync engine (it picks the best available):
+   A) Claude shared storage — automatic if you publish this file as a
+      Claude artifact (no setup).
+   B) Firebase — for GitHub Pages. FREE, 5 minutes:
+      1. console.firebase.google.com → Add project (any name)
+      2. Build → Realtime Database → Create database → Start in TEST mode
+      3. Copy the database URL, it looks like:
+         https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app
+      4. Paste it into SYNC_URL just below (keep the quotes), re-upload.
+      Everyone who opens the GitHub link now shares the same live data.
+   C) If neither is available → data saves on that device only, and the
+      status pill at the top says "THIS DEVICE ONLY" so nobody is confused.
+
+SECURITY:
+  Access codes are stored as SHA-256 hashes, so nobody can read them
+  from the page source. After first sign-in, each person can enable
+  Face ID / fingerprint for their device. To change someone's code:
+  open the site, press F12 → Console, and run (with the new code):
+    await (async c=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(c)))].map(b=>b.toString(16).padStart(2,'0')).join(''))('newcode')
+  then paste the result into that user's pwHash below and redeploy.
+  Note: this is still a static site — for bank-grade auth you would need
+  Firebase Authentication. Keep chat to team logistics only.
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -49,6 +85,10 @@ input,textarea,select{font-family:inherit;font-size:15px}
 .btn-go{width:100%;margin-top:8px;background:var(--pink);color:#fff;padding:15px;border-radius:10px;font-weight:600;font-size:16px;letter-spacing:.03em;transition:transform .12s,box-shadow .12s}
 .btn-go:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(240,79,106,.35)}
 .btn-go:active{transform:scale(.98)}
+.btn-bio{width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:14px;border-radius:10px;font-weight:600;font-size:15px;transition:border-color .15s}
+.btn-bio:hover{border-color:var(--olo)}
+.bio-forget{width:100%;margin-top:8px;color:var(--muted);font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase}
+.bio-forget:hover{color:var(--pink)}
 .login-err{margin-top:12px;font-family:var(--mono);font-size:12px;color:var(--pink);min-height:16px}
 .login-foot{text-align:center;padding:14px;font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--muted)}
 
@@ -123,6 +163,9 @@ aside{width:268px;min-width:268px;background:var(--navy);border-right:1px solid 
 #box::placeholder{color:var(--muted)}
 #send{width:40px;height:40px;border-radius:11px;background:var(--pink);color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex:none;transition:transform .12s}
 #send:active{transform:scale(.9)}
+.mdel{align-self:center;color:var(--muted);font-size:12px;padding:6px 8px;opacity:0;transition:opacity .12s}
+.msg:hover .mdel{opacity:1}
+.mdel:hover{color:var(--pink)}
 .hint{margin-top:7px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--muted);text-align:center}
 .roster{width:230px;min-width:230px;border-left:1px solid var(--line);background:var(--navy);overflow-y:auto;padding-bottom:20px;flex:none}
 .person{display:flex;gap:10px;align-items:center;padding:8px 18px}
@@ -277,6 +320,10 @@ aside,.roster,.cal-side,#feed,.col-body,.hq,.calscroll{scrollbar-width:thin;scro
       <div class="field"><label for="u">Callsign</label><input id="u" autocomplete="username" placeholder="e.g. aryeh" autocapitalize="none"></div>
       <div class="field"><label for="p">Access code</label><input id="p" type="password" autocomplete="current-password" placeholder="••••••••"></div>
       <button class="btn-go" id="go">Enter the paddock →</button>
+      <div id="bioBox" style="display:none;margin-top:12px">
+        <button class="btn-bio" id="bioBtn"></button>
+        <button class="bio-forget" id="bioForget">Remove Face ID from this device</button>
+      </div>
       <div class="login-err" id="err"></div>
     </div>
   </div>
@@ -432,6 +479,12 @@ aside,.roster,.cal-side,#feed,.col-body,.hq,.calscroll{scrollbar-width:thin;scro
           </div>
         </div>
 
+        <div class="panelbox" id="devPanel" style="display:none">
+          <div class="panel-h"><span>ACCOUNT SECURITY · ADMIN ONLY</span></div>
+          <div class="chk" id="devList"></div>
+          <div class="chk-prog"><div class="prog-lab">EACH ACCOUNT LOCKS TO THE FIRST DEVICE THAT SIGNS IN. RESET IF SOMEONE CHANGES PHONE OR GOT HIJACKED.</div></div>
+        </div>
+
         <div class="panelbox">
           <div class="panel-h"><span>QUICK LINKS</span></div>
           <a class="linkrow" href="https://teamnitro.org" target="_blank" rel="noopener"><span class="ic">🏎️</span>teamnitro.org — main site<span class="ar">↗</span></a>
@@ -452,20 +505,20 @@ const SYNC_URL = "https://orbitus-hq-default-rtdb.asia-southeast1.firebasedataba
 
 /* ══════════════ ACCOUNTS ══════════════ */
 const USERS = {
-  aryeh:{pw:"orbitus01",name:"Aryeh",role:"Team Leader · Design & Mfg",type:"team",color:"#F04F6A"},
-  anay:{pw:"orbitus02",name:"Anay",role:"Technical Head",type:"team",color:"#F04F6A",admin:true},
-  aariv:{pw:"orbitus03",name:"Aariv",role:"Enterprise & Marketing",type:"team",color:"#F04F6A"},
-  rishaan:{pw:"orbitus04",name:"Rishaan",role:"Sponsorship Manager",type:"team",color:"#F04F6A"},
-  vansh:{pw:"orbitus05",name:"Vansh",role:"Project Manager",type:"team",color:"#F04F6A"},
-  aryavardhan:{pw:"orbitus06",name:"Aryavardhan",role:"Team Identity Specialist",type:"team",color:"#F04F6A"},
-  jaypee:{pw:"partner01",name:"Jaypee Brothers",role:"Partner",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
-  starwire:{pw:"partner02",name:"StarWire",role:"Partner · Materials",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
-  lsg:{pw:"partner03",name:"Lucknow Super Giants",role:"Partner · Brand",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
-  bmw:{pw:"partner04",name:"BMW Infinity Motors",role:"Partner · Aero",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
-  safeexpress:{pw:"partner05",name:"Safe Express",role:"Partner · Logistics",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
-  saregama:{pw:"partner06",name:"Saregama",role:"Patron",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
-  bp:{pw:"partner07",name:"British Petroleum",role:"Partner · Energy",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
-  betadine:{pw:"partner08",name:"Betadine",role:"Partner · Safety",type:"sponsor",color:"#00E0C6",fg:"#0B132B"}
+  aryeh:{pwHash:"9d501336c4b29f82bd918a235679a0d93e6f1fe0d89f21d096d38fb0a617c17a",name:"Aryeh",role:"Team Leader · Design & Mfg",type:"team",color:"#F04F6A"},
+  anay:{pwHash:"1bf2f53c6afef429f4f210c1174a4949dab34e7891c90eec11e27a455a9a3b85",name:"Anay",role:"Technical Head",type:"team",color:"#F04F6A",admin:true},
+  aariv:{pwHash:"9b565b9618c2478ea5f8b808f1de0ab6f448f7fc5b2deb9e07e689d7a8de4af9",name:"Aariv",role:"Enterprise & Marketing",type:"team",color:"#F04F6A"},
+  rishaan:{pwHash:"fa4215ef0a5e5619b45d023227a8814782bccaaae614fc24ed6d3ee30976606b",name:"Rishaan",role:"Sponsorship Manager",type:"team",color:"#F04F6A"},
+  vansh:{pwHash:"9f1c2493b65304d396476c2f1c8523f21aab93fa5166f556603b96223a22ec9b",name:"Vansh",role:"Project Manager",type:"team",color:"#F04F6A"},
+  aryavardhan:{pwHash:"24c4ce0f0c89396abbb5f7391681a6855f9aa97abdb298aad6f2fbc30584889a",name:"Aryavardhan",role:"Team Identity Specialist",type:"team",color:"#F04F6A"},
+  jaypee:{pwHash:"d2539f6059ba9e4fb2da990e50566cd1760ed143508d894ef34d4ca6814d419e",name:"Jaypee Brothers",role:"Partner",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  starwire:{pwHash:"53e08db161f8d6c8104a80f6878efdab161df1d7144b2a40ed0e2a84be34f568",name:"StarWire",role:"Partner · Materials",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  lsg:{pwHash:"faab75e443758a8d038cbcbbd038218967feef08d3147c2f2b08bda37f36af37",name:"Lucknow Super Giants",role:"Partner · Brand",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  bmw:{pwHash:"f09c1177df9bddba521d1091ad913c40a89ae3e5552c06da2a787d54f9b92e79",name:"BMW Infinity Motors",role:"Partner · Aero",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  safeexpress:{pwHash:"cf7ded622ecf75ff62fbcad73154c6a07c6b3bb73f986f95194f1cc8854ebc23",name:"Safe Express",role:"Partner · Logistics",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  saregama:{pwHash:"562aca95c63b83eda54aef53e8e2183d6b5612975cf036d53c2a15cc16e1db89",name:"Saregama",role:"Patron",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  bp:{pwHash:"9237d4e838076dab90451f06ce12b8b6f481d3e3db4ac3114e11b6aa2e95d3fc",name:"British Petroleum",role:"Partner · Energy",type:"sponsor",color:"#00E0C6",fg:"#0B132B"},
+  betadine:{pwHash:"e6696ccf1209529b8812e8ad8bd002c024fd429415ac94b6b705967d0fc9333f",name:"Betadine",role:"Partner · Safety",type:"sponsor",color:"#00E0C6",fg:"#0B132B"}
 };
 const CHANNELS=[
   {id:"pitwall",name:"pit-wall",desc:"Announcements & race ops"},
@@ -547,12 +600,79 @@ async function sSet(key,val){
   }
 }
 
-/* ══════════════ LOGIN ══════════════ */
-function tryLogin(){
-  const u=$("u").value.trim().toLowerCase(),p=$("p").value;
-  if(USERS[u]&&USERS[u].pw===p){me=Object.assign({id:u},USERS[u]);try{sessionStorage.setItem("nitro_me",u);}catch(e){}boot();}
-  else{const e=$("err");e.textContent="ACCESS DENIED — CHECK CALLSIGN & CODE";e.classList.remove("on");void e.offsetWidth;e.classList.add("on");}
+/* ══════════════ LOGIN (hashed codes + Face ID) ══════════════ */
+async function sha256(t){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");}
+function getDev(){let d=localStorage.getItem("nitro_device");if(!d){d=uid()+"-"+uid();localStorage.setItem("nitro_device",d);}return d;}
+async function loginAs(u,silent){
+  await detectMode();
+  if(!USERS[u].admin&&mode!=="local"){
+    let map=await sGet("nitro-devices");if(!map||Array.isArray(map))map={};
+    const dev=getDev();
+    if(!map[u]){map[u]={dev:dev,since:Date.now()};await sSet("nitro-devices",map);}
+    else if(map[u].dev!==dev){
+      try{sessionStorage.removeItem("nitro_me");}catch(e){}
+      if(!silent)loginFail("THIS ACCOUNT IS LOCKED TO ITS OWNER'S DEVICE — ASK ANAY TO RESET IT");
+      return;
+    }
+  }
+  me=Object.assign({id:u},USERS[u]);
+  try{sessionStorage.setItem("nitro_me",u);}catch(e){}
+  boot();
 }
+function loginFail(msg){const e=$("err");e.textContent=msg||"ACCESS DENIED — CHECK CALLSIGN & CODE";e.classList.remove("on");void e.offsetWidth;e.classList.add("on");}
+let failCount=0,lockUntil=0;
+async function tryLogin(){
+  if(Date.now()<lockUntil){loginFail("TOO MANY ATTEMPTS — WAIT "+Math.ceil((lockUntil-Date.now())/1000)+"s");return;}
+  const u=$("u").value.trim().toLowerCase(),p=$("p").value;
+  let h="";try{h=await sha256(p);}catch(e){}
+  if(USERS[u]&&h&&USERS[u].pwHash===h){failCount=0;loginAs(u);}
+  else{
+    failCount++;
+    if(failCount>=5){lockUntil=Date.now()+60000;failCount=0;loginFail("TOO MANY ATTEMPTS — LOCKED FOR 60s");}
+    else loginFail();
+  }
+}
+/* --- Face ID / fingerprint (WebAuthn, bound to this device) --- */
+const B64=a=>btoa(String.fromCharCode(...new Uint8Array(a)));
+const U8=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+function bioInfo(){try{return JSON.parse(localStorage.getItem("nitro_bio")||"null");}catch(e){return null;}}
+async function offerBio(){
+  if(!window.PublicKeyCredential||bioInfo()||!me)return;
+  let ok=false;try{ok=await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();}catch(e){}
+  if(!ok)return;
+  if(!confirm("Enable Face ID / fingerprint sign-in for "+me.name+" on this device?"))return;
+  try{
+    const cred=await navigator.credentials.create({publicKey:{
+      challenge:crypto.getRandomValues(new Uint8Array(32)),
+      rp:{name:"Team N!TRO HQ",id:location.hostname},
+      user:{id:new TextEncoder().encode(me.id),name:me.id,displayName:me.name},
+      pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],
+      authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required"},
+      timeout:60000
+    }});
+    localStorage.setItem("nitro_bio",JSON.stringify({id:B64(cred.rawId),user:me.id}));
+  }catch(e){/* user cancelled — no problem */}
+}
+async function bioLogin(){
+  const b=bioInfo();if(!b||!USERS[b.user])return;
+  try{
+    await navigator.credentials.get({publicKey:{
+      challenge:crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials:[{type:"public-key",id:U8(b.id)}],
+      userVerification:"required",timeout:60000
+    }});
+    loginAs(b.user);
+  }catch(e){loginFail("FACE ID CANCELLED OR FAILED — USE YOUR CODE");}
+}
+function renderBio(){
+  const b=bioInfo(),box=$("bioBox");
+  if(!b||!USERS[b.user]||!window.PublicKeyCredential){box.style.display="none";return;}
+  box.style.display="block";
+  $("bioBtn").textContent="Sign in with Face ID — "+USERS[b.user].name;
+}
+$("bioBtn").onclick=bioLogin;
+$("bioForget").onclick=()=>{localStorage.removeItem("nitro_bio");renderBio();};
+renderBio();
 $("go").onclick=tryLogin;
 $("p").addEventListener("keydown",e=>{if(e.key==="Enter")tryLogin();});
 $("u").addEventListener("keydown",e=>{if(e.key==="Enter")$("p").focus();});
@@ -595,7 +715,8 @@ async function boot(){
     const o=document.createElement("option");o.value=id;o.textContent=u.name;sel.appendChild(o);
   });
 
-  if(isAdmin())$("chkReset").style.display="inline-block";
+  if(isAdmin()){$("chkReset").style.display="inline-block";$("devPanel").style.display="block";refreshDevices();}
+  setTimeout(offerBio,900);
   setChanHeader();
   await seedCalendar();await seedChecklist();
   refreshChat(true);refreshCal();refreshTasks();refreshChecklist();
@@ -604,10 +725,10 @@ async function boot(){
     if(view==="comms")refreshChat(false);
     else if(view==="calendar")refreshCal();
     else if(view==="board")refreshTasks();
-    else refreshChecklist();
+    else{refreshChecklist();refreshDevices();}
   },4000);
 }
-try{const s=sessionStorage.getItem("nitro_me");if(s&&USERS[s]){me=Object.assign({id:s},USERS[s]);boot();}}catch(e){}
+try{const s=sessionStorage.getItem("nitro_me");if(s&&USERS[s])loginAs(s,true);}catch(e){}
 
 /* ══════════════ TABS / SIDEBAR ══════════════ */
 document.querySelectorAll("#tabs .tab").forEach(t=>{
@@ -631,6 +752,11 @@ function tick(){
   const d=Math.max(0,NAT_START-now);
   set(Math.floor(d/864e5),String(Math.floor(d/36e5)%24).padStart(2,"0"),String(Math.floor(d/6e4)%60).padStart(2,"0"),String(Math.floor(d/1e3)%60).padStart(2,"0"));
 }
+
+/* ══════════════ LANGUAGE FILTER ══════════════ */
+const BAD=["fuck","fucker","fucking","motherfucker","shit","bullshit","bitch","bitches","asshole","arsehole","bastard","dickhead","cunt","slut","whore","wtf","stfu","chutiya","chutiye","bhenchod","behenchod","bhosdike","bsdk","madarchod","gandu","gaand","randi","harami","lund","lauda","loda","mc","bc"];
+const BAD_RE=new RegExp("\\b("+BAD.join("|")+")\\b","gi");
+const clean=t=>String(t).replace(BAD_RE,m=>"*".repeat(m.length));
 
 /* ══════════════ CHAT ══════════════ */
 function setChanHeader(){$("chanName").textContent=chan.name;$("chanDesc").textContent=chan.desc;$("box").placeholder="Message #"+chan.name+"…";}
@@ -658,7 +784,13 @@ async function refreshChat(scroll){
       b.innerHTML='<div class="line1"><span class="who">'+esc(u.name)+'</span>'+badge+'<span class="when">'+new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+'</span></div>';
     }
     const tx=document.createElement("div");tx.className="txt";tx.textContent=m.text;b.appendChild(tx);
-    d.appendChild(b);f.appendChild(d);
+    d.appendChild(b);
+    if(isAdmin()){
+      const del=document.createElement("button");del.className="mdel";del.textContent="✕";del.title="Delete this message";
+      del.onclick=async()=>{const cur=await sGet("nitro-chat:"+chan.id);await sSet("nitro-chat:"+chan.id,cur.filter(x=>x.id!==m.id));lastChat="";refreshChat(false);};
+      d.appendChild(del);
+    }
+    f.appendChild(d);
     lastUid=m.uid;
   });
   if(scroll!==false)f.scrollTop=f.scrollHeight;
@@ -667,7 +799,7 @@ async function sendMsg(){
   const t=$("box").value.trim();if(!t||!me)return;
   $("box").value="";autoGrow();$("send").disabled=true;
   const cur=await sGet("nitro-chat:"+chan.id);
-  cur.push({id:uid(),uid:me.id,uname:me.name,text:t.slice(0,2000),ts:Date.now()});
+  cur.push({id:uid(),uid:me.id,uname:me.name,text:clean(t.slice(0,2000)),ts:Date.now()});
   while(cur.length>300)cur.shift();
   await sSet("nitro-chat:"+chan.id,cur);
   lastChat="";refreshChat(true);
@@ -731,7 +863,7 @@ function drawDay(){
 $("evAdd").onclick=async()=>{
   const t=$("evTitle").value.trim();if(!t||!selDate)return;
   const ev=await sGet("nitro-cal");
-  ev.push({id:uid(),date:selDate,time:$("evTime").value||"",title:t,tag:$("evTag").value,by:me.name,byId:me.id});
+  ev.push({id:uid(),date:selDate,time:$("evTime").value||"",title:clean(t),tag:$("evTag").value,by:me.name,byId:me.id});
   while(ev.length>200)ev.shift();
   await sSet("nitro-cal",ev);
   $("evTitle").value="";$("evTime").value="";
@@ -775,7 +907,7 @@ async function refreshTasks(){
 $("tkAdd").onclick=async()=>{
   const t=$("tkTitle").value.trim();if(!t)return;
   const tasks=await sGet("nitro-tasks");
-  tasks.push({id:uid(),title:t,assign:$("tkAssign").value,status:"todo",by:me.id,ts:Date.now()});
+  tasks.push({id:uid(),title:clean(t),assign:$("tkAssign").value,status:"todo",by:me.id,ts:Date.now()});
   while(tasks.length>200)tasks.shift();
   await sSet("nitro-tasks",tasks);
   $("tkTitle").value="";lastTasks="";refreshTasks();
@@ -808,6 +940,24 @@ async function refreshChecklist(){
   const pct=items.length?Math.round(done/items.length*100):0;
   $("progFill").style.width=pct+"%";
   $("progLab").textContent=done+" OF "+items.length+" READY · "+pct+"%";
+}
+async function refreshDevices(){
+  if(!isAdmin())return;
+  let map=await sGet("nitro-devices");if(!map||Array.isArray(map))map={};
+  const box=$("devList");box.innerHTML="";
+  Object.entries(USERS).forEach(([id,u])=>{
+    if(u.admin)return;
+    const b=map[id];
+    const d=document.createElement("div");d.className="chk-i";d.style.cursor="default";
+    d.innerHTML='<span class="cl" style="flex:1">'+esc(u.name)+' — '+(b?'locked since '+new Date(b.since).toLocaleDateString('en',{day:'2-digit',month:'short'}):'no device yet')+'</span>'+(b?'<button class="pill" data-u="'+id+'">Reset</button>':'');
+    box.appendChild(d);
+  });
+  box.querySelectorAll(".pill").forEach(bt=>bt.onclick=async()=>{
+    let map=await sGet("nitro-devices");if(!map||Array.isArray(map))map={};
+    delete map[bt.dataset.u];
+    await sSet("nitro-devices",map);
+    refreshDevices();
+  });
 }
 $("chkReset").onclick=async()=>{
   if(!confirm("Untick every checklist item for the whole team?"))return;
